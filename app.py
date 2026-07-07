@@ -11,7 +11,7 @@ import chunk
 import chbd
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-RETRIEVAL_K = 20
+RETRIEVAL_K = 24
 
 MODELS = {
     "Gemini 2.5 Flash ⚡":    "google/gemini-2.5-flash",

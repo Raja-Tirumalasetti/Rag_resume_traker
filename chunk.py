@@ -117,51 +117,10 @@ def split_text_into_chunks(
     overlap: int = CHUNK_OVERLAP
 ) -> list[str]:
     """
-    Splits text into overlapping chunks.
-    Priority: paragraph boundary -> sentence boundary -> hard cut.
-    Each step advances by at least (chunk_size - overlap) characters.
+    Returns the entire text as a single chunk to satisfy the 1-resume-1-chunk requirement.
     """
-    text = re.sub(r'\n{3,}', '\n\n', text).strip()
-
-    # Short enough to keep as one chunk
-    if len(text) <= chunk_size:
-        return [text] if text else []
-
-    chunks = []
-    start  = 0
-    step   = chunk_size - overlap   # minimum advance per iteration
-
-    while start < len(text):
-        end = start + chunk_size
-
-        if end >= len(text):
-            tail = text[start:].strip()
-            if tail:
-                chunks.append(tail)
-            break
-
-        # Try paragraph boundary (search in the latter half of the window)
-        split_pos = text.rfind("\n\n", start + step, end)
-
-        # Fall back to sentence boundary
-        if split_pos < start + step:
-            for sep in (". ", "? ", "! ", "\n"):
-                pos = text.rfind(sep, start + step, end)
-                if pos >= start + step:
-                    split_pos = pos + len(sep)
-                    break
-            else:
-                # Hard cut at end of window
-                split_pos = end
-
-        piece = text[start:split_pos].strip()
-        if piece:
-            chunks.append(piece)
-
-        # Advance: next chunk starts (split_pos - overlap) but at least step chars forward
-        start = max(start + step, split_pos - overlap)
-
-    return chunks
+    cleaned_text = text.strip()
+    return [cleaned_text] if cleaned_text else []
 
 
 # ── Main Entry ─────────────────────────────────────────────────────────────────
