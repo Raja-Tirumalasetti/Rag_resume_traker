@@ -1,6 +1,6 @@
 import os
 import streamlit as st
-from dotenv import load_dotenv, set_key
+from dotenv import load_dotenv, set_key, dotenv_values
 
 # Load .env with explicit absolute path
 _ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -110,8 +110,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Session State ──────────────────────────────────────────────────────────────
+# Always read fresh from .env so changes take effect immediately
+_env_values = dotenv_values(_ENV_PATH)
 if "or_key" not in st.session_state:
-    st.session_state.or_key = os.getenv("OPENROUTER_API_KEY", "")
+    st.session_state.or_key = _env_values.get("OPENROUTER_API_KEY", "") or os.getenv("OPENROUTER_API_KEY", "")
 if "sel_model_name" not in st.session_state:
     st.session_state.sel_model_name = MODEL_NAMES[0]
 if "last_question" not in st.session_state:
@@ -122,6 +124,8 @@ if "last_sources" not in st.session_state:
     st.session_state.last_sources = []
 if "db_count" not in st.session_state:
     st.session_state.db_count = 0
+if "api_connection_status" not in st.session_state:
+    st.session_state.api_connection_status = "Not Tested"
 
 # ── DB Count ───────────────────────────────────────────────────────────────────
 def refresh_db_count():
@@ -147,6 +151,9 @@ with st.sidebar:
         st.session_state.or_key = key_input
         if key_input.strip():
             set_key(_ENV_PATH, "OPENROUTER_API_KEY", key_input)
+            # Reload env so os.getenv picks up the new key in the same process
+            load_dotenv(_ENV_PATH, override=True)
+            st.session_state.api_connection_status = "Not Tested"  # reset connection badge
 
     badge = ('<span class="badge badge-ok">✓ Set</span>'
              if st.session_state.or_key
@@ -162,6 +169,52 @@ with st.sidebar:
     )
     st.markdown(f"📁 **{len(resumes_list)}** resume files")
     st.markdown(f"📊 **{st.session_state.db_count}** chunks indexed")
+
+    # Connection Status
+    st.markdown('<div class="sec-title">🔌 Connection Status</div>', unsafe_allow_html=True)
+    
+    # DB connection check
+    db_ok = False
+    try:
+        temp_db = chbd.get_chroma_db()
+        temp_db.get(limit=1)
+        db_ok = True
+    except Exception:
+        db_ok = False
+        
+    db_badge = ('<span class="badge badge-ok">✓ Connected</span>'
+                if db_ok
+                else '<span class="badge badge-err">✗ Disconnected</span>')
+    st.markdown(f"Database: {db_badge}", unsafe_allow_html=True)
+    
+    # API Test Button & Status
+    if st.button("🔌 Test API Connection", use_container_width=True):
+        if not st.session_state.or_key:
+            st.session_state.api_connection_status = "Missing Key"
+        else:
+            with st.spinner("Testing API connection..."):
+                try:
+                    chosen_model_id = MODELS[st.session_state.sel_model_name]
+                    test_resp = capi.query_openrouter(
+                        "Respond with only the word OK",
+                        model=chosen_model_id,
+                        api_key=st.session_state.or_key
+                    )
+                    if "ok" in test_resp.lower():
+                        st.session_state.api_connection_status = "Working"
+                    else:
+                        st.session_state.api_connection_status = f"Unexpected response: {test_resp[:20]}"
+                except Exception as e:
+                    st.session_state.api_connection_status = f"Error: {str(e)[:40]}"
+                    
+    if st.session_state.api_connection_status == "Working":
+        api_badge = '<span class="badge badge-ok">✓ Working</span>'
+    elif st.session_state.api_connection_status in ("Not Tested", "Missing Key"):
+        api_badge = f'<span class="badge" style="background: rgba(255,255,255,0.1); color: #888;">{st.session_state.api_connection_status}</span>'
+    else:
+        api_badge = f'<span class="badge badge-err" title="{st.session_state.api_connection_status}">✗ {st.session_state.api_connection_status}</span>'
+        
+    st.markdown(f"API Connection: {api_badge}", unsafe_allow_html=True)
 
     # Index button
     st.markdown('<div class="sec-title">⚡ Actions</div>', unsafe_allow_html=True)
@@ -249,8 +302,7 @@ if submitted and user_query.strip():
     with st.spinner("🔍 Searching resumes..."):
         try:
             db             = chbd.get_chroma_db()
-            retriever      = db.as_retriever(search_kwargs={"k": RETRIEVAL_K})
-            retrieved_docs = retriever.invoke(user_query)
+            retrieved_docs = chbd.hybrid_search(db, user_query, k=RETRIEVAL_K)
 
             if not retrieved_docs:
                 st.session_state.last_question = user_query

@@ -26,7 +26,7 @@ def query_openrouter(prompt: str, model: str = "google/gemini-2.5-flash", api_ke
         base_url="https://openrouter.ai/api/v1",
         model=model,
         temperature=0.0,
-        max_tokens=1000,
+        max_tokens=500,
         default_headers={
             "HTTP-Referer": "https://github.com/google-deepmind/antigravity",
             "X-Title": "Resume Tracker RAG App",
